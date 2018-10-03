@@ -12,6 +12,7 @@ module Roo
         @shared = shared
         @options = options
         @relationships = relationships
+        @shared_formulas = {}
       end
 
       def cells(relationships)
@@ -27,6 +28,10 @@ module Roo
       # be parsed. (the document may be sparse so cell count is only upper bound)
       def dimensions
         @dimensions ||= extract_dimensions
+      end
+
+      def data_validations
+        @validations ||= extract_data_validations
       end
 
       # Yield each row xml element to caller
@@ -100,7 +105,17 @@ module Roo
               return Excelx::Cell.create_cell(:string, content_arr.join(''), formula, style, hyperlink, coordinate)
             end
           when 'f'
-            formula = cell.content
+            if cell['t'] == 'shared'
+              if cell['ref']
+                formula = cell.content
+                @shared_formulas[cell['si']] = [formula, coordinate]
+              else
+                orig_formula, orig_coordinate = @shared_formulas[cell['si']]
+                formula = relocate_formula(orig_formula, orig_coordinate, coordinate)
+              end
+            else
+              formula = cell.content
+            end
           when 'v'
             return create_cell_from_value(value_type, cell, formula, format, style, hyperlink, base_date, coordinate)
           end
@@ -204,6 +219,27 @@ module Roo
       def extract_dimensions
         Roo::Utils.each_element(@path, 'dimension') do |dimension|
           return dimension.attributes['ref'].value
+        end
+      end
+
+      def extract_data_validations
+        validations = {}
+        doc.xpath('//dataValidation').each do |v|
+          v.attributes['sqref'].value.split(' ').each do |ref|
+            validations[ref] = v.content
+          end
+        end
+        validations
+      end
+
+      def relocate_formula(formula, from_coord, to_coord)
+        row_delta = to_coord.row - from_coord.row
+        col_delta = to_coord.column - from_coord.column
+        coords = formula.scan(/(?<![A-Z0-9])([A-Z][A-Z]?[0-9][0-9]?[0-9]?[0-9]?)(?![A-Z0-9])/).to_a.flatten.uniq
+        coords.inject(formula) do |formula, coord|
+          row, col = ::Roo::Utils.split_coordinate(coord)
+          new_coord = "#{::Roo::Utils.number_to_letter(col + col_delta)}#{row + row_delta}"
+          formula.gsub(coord, new_coord)
         end
       end
     end

@@ -26,7 +26,7 @@ module Roo
     require 'roo/excelx/format'
     require 'roo/excelx/images'
 
-    delegate [:styles, :workbook, :shared_strings, :rels_files, :sheet_files, :comments_files, :image_rels, :image_files] => :@shared
+    delegate [:styles, :workbook, :shared_strings, :rels_files, :sheet_files, :comments_files, :image_rels, :image_files, :defined_names] => :@shared
     ExceedsMaxError = Class.new(StandardError)
 
     # initialization and opening of a spreadsheet file
@@ -41,7 +41,7 @@ module Roo
       sheet_options[:expand_merged_ranges] = (options[:expand_merged_ranges] || false)
       sheet_options[:no_hyperlinks] = (options[:no_hyperlinks] || false)
       shared_options = {}
-        
+
       shared_options[:disable_html_wrapper] = (options[:disable_html_wrapper] || false)
       unless is_stream?(filename_or_stream)
         file_type_check(filename_or_stream, %w[.xlsx .xlsm], 'an Excel 2007', file_warning, packed)
@@ -393,6 +393,15 @@ module Roo
       end
     end
 
+    def extract_defined_names(entries, path)
+      wb = entries.find { |e| e.name[/workbook.xml$/] }
+      fail ArgumentError 'missing required workbook file' if wb.nil?
+
+      wb.extract(path)
+      workbook_doc = Roo::Utils.load_xml(path).remove_namespaces!
+      workbook_doc.xpath('//definedName').each { |s| defined_names[s.attributes['name'].value] = s.content }
+    end
+
     # Extracts all needed files from the zip file
     def process_zipfile(zipfilename_or_stream)
       @sheet_files = []
@@ -427,6 +436,7 @@ module Roo
       sheets = extract_worksheet_rels(entries, "#{@tmpdir}/roo_workbook.xml.rels")
       extract_sheets_in_order(entries, sheet_ids, sheets, @tmpdir)
       extract_images(entries, @tmpdir)
+      extract_defined_names(entries, "#{@tmpdir}/roo_workbook.xml.defs")
 
       entries.each do |entry|
         path =

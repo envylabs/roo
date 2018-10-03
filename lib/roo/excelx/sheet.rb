@@ -89,6 +89,10 @@ module Roo
         @sheet.dimensions
       end
 
+      def data_validations
+        @sheet.data_validations
+      end
+
       private
 
       # Take an xml row and return an array of Excelx::Cell objects
