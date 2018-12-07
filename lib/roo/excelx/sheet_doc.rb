@@ -13,6 +13,7 @@ module Roo
         @options = options
         @relationships = relationships
         @shared_formulas = {}
+        @data_tables = {}
       end
 
       def cells(relationships)
@@ -97,6 +98,10 @@ module Roo
         value_type = cell_value_type(cell_xml['t'], format)
         formula = nil
 
+        if data_table = find_data_table(coordinate)
+          formula = data_table_formula(coordinate, data_table)
+        end
+
         cell_xml.children.each do |cell|
           case cell.name
           when 'is'
@@ -113,6 +118,14 @@ module Roo
                 orig_formula, orig_coordinate = @shared_formulas[cell['si']]
                 formula = relocate_formula(orig_formula, orig_coordinate, coordinate)
               end
+            elsif cell['t'] == 'dataTable'
+              data_table = {
+                input_column: coordinate.column - 1,
+                result_row: coordinate.row - 1,
+                target: cell['r1']
+              }
+              @data_tables[cell['ref']] = data_table
+              formula = data_table_formula(coordinate, data_table)
             else
               formula = cell.content
             end
@@ -122,6 +135,24 @@ module Roo
         end
 
         Excelx::Cell::Empty.new(coordinate)
+      end
+
+      def find_data_table(coordinate)
+        ref = @data_tables.keys.detect do |r|
+          from, to = r.split(':')
+          from_row, from_col = Roo::Utils.split_coordinate(from)
+          to_row, to_col = Roo::Utils.split_coordinate(to)
+          coordinate.row >= from_row && coordinate.row <= to_row &&
+            coordinate.column >= from_col && coordinate.column <= to_col
+        end
+
+        @data_tables[ref] if ref
+      end
+
+      def data_table_formula(coordinate, data_table)
+        result = "#{Roo::Utils::number_to_letter(coordinate.column)}#{data_table[:result_row]}"
+        source = "#{Roo::Utils::number_to_letter(data_table[:input_column])}#{coordinate.row}"
+        "TABLE(\"#{result}\",\"#{data_table[:target]}\",#{source})"
       end
 
       def create_cell_from_value(value_type, cell, formula, format, style, hyperlink, base_date, coordinate)
