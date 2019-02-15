@@ -266,11 +266,21 @@ module Roo
       def relocate_formula(formula, from_coord, to_coord)
         row_delta = to_coord.row - from_coord.row
         col_delta = to_coord.column - from_coord.column
-        coords = formula.scan(/(?<![A-Z0-9])([A-Z][A-Z]?[0-9][0-9]?[0-9]?[0-9]?)(?![A-Z0-9])/).to_a.flatten.uniq
+        coords = formula.scan(/(?<![A-Z0-9_])(\$?[A-Z][A-Z]?\$?[0-9][0-9]?[0-9]?[0-9]?)(?![A-Z0-9_])/).to_a.flatten.uniq
         coords.inject(formula) do |formula, coord|
-          row, col = ::Roo::Utils.split_coordinate(coord)
-          new_coord = "#{::Roo::Utils.number_to_letter(col + col_delta)}#{row + row_delta}"
-          formula.gsub(coord, new_coord)
+          row, col = ::Roo::Utils.split_coordinate(coord.gsub('$', ''))
+          new_row = if coord.index('$', 1)
+                      row
+                    else
+                      row + row_delta
+                    end
+          new_col = if coord.start_with?('$')
+                      col
+                    else
+                      col + col_delta
+                    end
+          new_coord = "#{::Roo::Utils.number_to_letter(new_col)}#{new_row}"
+          formula.gsub(/(?<![A-Z0-9])#{Regexp.quote(coord)}(?![A-Z0-9])/, new_coord)
         end
       end
     end
